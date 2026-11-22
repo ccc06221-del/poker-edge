@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Poker Hand Percentile Trainer</title>
+<style>
+  :root { --bg:#0d3320; --felt:#14522f; --card:#f7f5ef; --gold:#e8c264; }
+  * { box-sizing:border-box; margin:0; padding:0; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; }
+  body { background:var(--bg); color:#eee; min-height:100vh; display:flex; flex-direction:column; align-items:center; padding:24px 16px; }
+  h1 { font-size:20px; color:var(--gold); margin-bottom:14px; letter-spacing:.5px; }
+  .modes { display:flex; gap:8px; margin-bottom:18px; }
+  .modes button { padding:8px 18px; border-radius:20px; border:1px solid var(--gold); background:transparent; color:var(--gold); cursor:pointer; font-size:14px; }
+  .modes button.active { background:var(--gold); color:#222; font-weight:700; }
+  .hint { font-size:12px; color:#9fc7a9; margin-bottom:18px; max-width:420px; text-align:center; }
+  .table { background:var(--felt); border:6px solid #0a2417; border-radius:60px; padding:30px 50px; display:flex; gap:16px; box-shadow:0 8px 30px rgba(0,0,0,.5); margin-bottom:22px; }
+  .cardface { width:90px; height:130px; background:var(--card); border-radius:10px; display:flex; flex-direction:column; justify-content:space-between; padding:8px 10px; box-shadow:0 3px 8px rgba(0,0,0,.4); }
+  .cardface .top { font-size:26px; font-weight:800; line-height:1; }
+  .cardface .suit { font-size:44px; text-align:center; }
+  .cardface .bot { font-size:26px; font-weight:800; line-height:1; transform:rotate(180deg); align-self:flex-end; }
+  .red { color:#c0392b; } .black { color:#1a1a1a; }
+  .handname { font-size:15px; color:#bbb; margin-bottom:16px; }
+  .guessrow { display:flex; align-items:center; gap:10px; margin-bottom:8px; }
+  input[type=range] { width:260px; accent-color:var(--gold); }
+  .guessval { font-size:26px; font-weight:800; color:var(--gold); width:70px; text-align:center; }
+  .sublabel { font-size:12px; color:#9fc7a9; margin-bottom:14px; }
+  .btn { padding:12px 34px; font-size:16px; font-weight:700; border:none; border-radius:10px; background:var(--gold); color:#222; cursor:pointer; margin-bottom:18px; }
+  .btn:active { transform:scale(.97); }
+  #result { text-align:center; max-width:440px; display:none; }
+  .big { font-size:34px; font-weight:800; margin:6px 0; }
+  .good { color:#6fdc8c; } .ok { color:#e8c264; } .bad { color:#e77; }
+  .other { font-size:13px; color:#9fc7a9; margin-top:6px; }
+  .stats { margin-top:18px; font-size:13px; color:#8aa; }
+  #poscard { margin-top:16px; background:#0a2a1a; border:1px solid #2a5c3d; border-radius:12px; padding:12px 16px; text-align:left; font-size:14px; }
+  #poscard h3 { font-size:13px; color:var(--gold); margin-bottom:8px; letter-spacing:.5px; }
+  .posrow { display:flex; justify-content:space-between; padding:3px 0; border-bottom:1px dashed #1e4630; }
+  .posrow:last-child { border-bottom:none; }
+  .posrow .bb { color:#9fc7a9; }
+  .fold { color:#e77; } .play { color:#6fdc8c; font-weight:700; }
+  .posnote { font-size:11px; color:#7a9; margin-top:6px; }
+  .grade { font-size:15px; font-weight:700; margin-top:2px; }
+</style>
+</head>
+<body>
+<h1>&#9824; Hand Percentile Trainer</h1>
+
+<div class="modes">
+  <button id="mNormal" class="active" onclick="setMode('normal')">Normal</button>
+  <button id="mShort" onclick="setMode('short')">Short Stack (all-in)</button>
+</div>
+<div class="hint" id="modeHint"></div>
+
+<div class="table">
+  <div class="cardface" id="c1"></div>
+  <div class="cardface" id="c2"></div>
+</div>
+<div class="handname" id="handname"></div>
+
+<div class="guessrow">
+  <input type="range" id="guess" min="0" max="100" value="50" oninput="gv.textContent=this.value">
+  <div class="guessval" id="gv">50</div>
+</div>
+<div class="sublabel">This hand beats what % of all starting hands? (100 = AA)</div>
+
+<button class="btn" id="mainBtn" onclick="act()">Reveal</button>
+
+<div id="result">
+  <div>Correct answer (<span id="rmode"></span>):</div>
+  <div class="big" id="ranswer"></div>
+  <div class="grade" id="rgrade"></div>
+  <div class="other" id="rother"></div>
+  <div id="poscard"></div>
+</div>
+
+<div class="stats" id="stats"></div>
+
+<script>
+// Rankings best -> worst (approximate; pairs=6, suited=4, offsuit=12 combos of 1326)
+const NORMAL = "AA KK QQ JJ AKs TT AQs AKo AJs KQs 99 ATs AQo KJs 88 QJs KTs A9s AJo QTs KQo 77 JTs A8s K9s ATo A5s A7s KJo 66 T9s A4s Q9s J9s QJo A6s 55 A3s K8s KTo 98s T8s K7s A2s 87s QTo Q8s 44 A9o J8s 76s JTo 97s K6s K5s K4s T7s Q7s 33 65s J7s 86s 96s K3s Q6s 54s K2s Q5s 75s 22 T9o Q4s 64s J6s 98o 85s T6s Q3s A8o K9o J5s Q9o 53s 74s J4s Q2s 43s 95s J9o A7o T5s J3s 63s 84s T8o J2s T4s A5o 52s T3s 94s A6o 42s T2s J8o 73s A4o 93s 32s K8o 62s 92s A3o 87o 97o 83s 82s Q8o A2o 72s 76o K7o 65o T7o 86o K6o 54o 96o J7o 75o Q7o K5o 64o 85o K4o Q6o 53o T6o K3o 43o 95o Q5o J6o 63o 74o K2o Q4o J5o 52o T5o 84o 42o Q3o J4o 94o T4o 32o 73o Q2o J3o 62o 93o T3o 92o J2o 83o 82o T2o 72o".split(" ");
+const SHORT = "AA KK QQ JJ TT 99 88 AKs 77 AQs AJs AKo ATs AQo AJo KQs 66 A9s ATo KJs A8s KTs KQo A7s A9o KJo 55 QJs K9s A5s A6s A8o KTo QTs A4s A7o K8s A3s QJo K9o A5o A6o Q9s K7s JTs A2s QTo 44 A4o K6s K8o Q8s A3o K5s J9s Q9o JTo K7o A2o K4s Q7s K6o K3s T9s J8s 33 Q6s Q8o K5o J9o K2s Q5s T8s K4o J7s Q4s Q7o T9o J8o K3o Q6o Q3s 98s T7s J6s K2o 22 Q2s Q5o J5s T8o J7o Q4o 97s J4s T6s J3s Q3o 98o 87s T7o J6o 96s J2s Q2o T5s J5o T4s 97o 86s J4o T6o 95s T3s 76s J3o 87o T2s 85s 96o J2o T5o 94s 75s T4o 93s 86o 65s 84s 95o T3o 92s 76o 74s T2o 54s 85o 64s 83s 94o 75o 82s 73s 93o 65o 53s 63s 84o 92o 43s 74o 72s 54o 64o 52s 62s 83o 42s 82o 73o 53o 63o 32s 43o 72o 52o 62o 42o 32o".split(" ");
+
+function combos(h){ return h.length===2 ? 6 : (h[2]==='s' ? 4 : 12); }
+function pctMap(list){
+  // percentile = % of the 1326 combos strictly worse than this hand
+  let m={}, below=0, total=1326;
+  for(let i=list.length-1;i>=0;i--){} // noop
+  let cum=0;
+  for(let i=list.length-1;i>=0;i--){ m[list[i]] = Math.round(cum/total*100); cum += combos(list[i]); }
+  return m;
+}
+const PCT = { normal: pctMap(NORMAL), short: pctMap(SHORT) };
+
+const HINTS = {
+  normal: "Normal play (deep stacks): suited &amp; connected hands gain value — they make flushes/straights postflop.",
+  short: "Short stack push/fold: raw all-in equity vs a random hand. Big cards (any Ace, King-high) rank UP; small suited connectors rank DOWN — there's no postflop play."
+};
+
+const RANKS="AKQJT98765432", SUITS=[["♠","black"],["♥","red"],["♦","red"],["♣","black"]];
+let mode="normal", cur=null, revealed=false, n=0, errSum=0;
+
+function setMode(m){
+  mode=m;
+  document.getElementById('mNormal').className = m==='normal'?'active':'';
+  document.getElementById('mShort').className  = m==='short' ?'active':'';
+  document.getElementById('modeHint').innerHTML = HINTS[m];
+  deal();
+}
+function deal(){
+  revealed=false;
+  let i1=Math.floor(Math.random()*52), i2;
+  do{ i2=Math.floor(Math.random()*52); }while(i2===i1);
+  const r1=RANKS[Math.floor(i1/4)], s1=SUITS[i1%4], r2=RANKS[Math.floor(i2/4)], s2=SUITS[i2%4];
+  // canonical name
+  let hi=r1, lo=r2;
+  if(RANKS.indexOf(r2)<RANKS.indexOf(r1)){ hi=r2; lo=r1; }
+  cur = r1===r2 ? r1+r1 : hi+lo+(s1[0]===s2[0]?'s':'o');
+  render('c1',r1,s1); render('c2',r2,s2);
+  document.getElementById('handname').textContent = cur + (cur.length===2?" (pocket pair)":(cur[2]==='s'?" (suited)":" (offsuit)"));
+  document.getElementById('result').style.display='none';
+  document.getElementById('mainBtn').textContent='Reveal';
+  const g=document.getElementById('guess'); g.value=50; document.getElementById('gv').textContent='50';
+}
+function render(id,r,s){
+  const el=document.getElementById(id);
+  el.innerHTML = `<div class="top ${s[1]}">${r}</div><div class="suit ${s[1]}">${s[0]}</div><div class="bot ${s[1]}">${r}</div>`;
+}
+function act(){
+  if(revealed){ deal(); return; }
+  revealed=true;
+  const guess=+document.getElementById('guess').value;
+  const ans=PCT[mode][cur], other=mode==='normal'?'short':'normal';
+  const diff=Math.abs(guess-ans);
+  n++; errSum+=diff;
+  const cls = diff<=7?'good':(diff<=15?'ok':'bad');
+  const word = diff<=7?'Excellent!':(diff<=15?'Close.':'Way off.');
+  document.getElementById('rmode').textContent = mode==='normal'?'Normal':'Short stack all-in';
+  document.getElementById('ranswer').innerHTML = `<span class="${cls}">${ans}</span> <span style="font-size:16px;color:#999">(you: ${guess}, off by ${diff})</span>`;
+  document.getElementById('rgrade').innerHTML = `<span class="${cls}">${word}</span>`;
+  document.getElementById('rother').textContent = `For comparison — ${other==='short'?'short stack all-in':'normal'} percentile: ${PCT[other][cur]}`;
+  // MTT open/all-in by stack depth. Thresholds = "top X% of hands" per position [UTG, MP, CO, BTN, SB]
+  const POS=["UTG","MP","CO","BTN","SB"];
+  const CHART=[
+    {bb:"100bb", act:"open",   rank:"normal", th:[15,20,27,45,45]},
+    {bb:"50bb",  act:"open",   rank:"normal", th:[15,20,27,43,43]},
+    {bb:"30bb",  act:"open",   rank:"normal", th:[13,18,25,40,40]},
+    {bb:"15bb",  act:"ALL-IN", rank:"short",  th:[10,14,20,32,45]}
+  ];
+  let rows="";
+  for(const c of CHART){
+    const top = 100 - PCT[c.rank][cur]; // top X% of hands
+    let idx = c.th.findIndex(t => top <= t);
+    let txt;
+    if(idx===-1) txt = `<span class="fold">Fold everywhere</span>`;
+    else if(idx===0) txt = `<span class="play">${c.act} from ANY position</span>`;
+    else txt = `<span class="play">${c.act} from ${POS[idx]} or later</span>`;
+    rows += `<div class="posrow"><span class="bb">${c.bb}</span>${txt}</div>`;
+  }
+  document.getElementById('poscard').innerHTML =
+    `<h3>MTT: WHERE TO PLAY ${cur}?</h3>${rows}<div class="posnote">Positions: UTG → MP → CO → BTN → SB. 100/50/30bb = raise-first-in; 15bb = open shove. Approximate, unopened pot.</div>`;
+  document.getElementById('result').style.display='block';
+  document.getElementById('stats').textContent = `Hands: ${n} · Avg error: ${(errSum/n).toFixed(1)}`;
+  document.getElementById('mainBtn').textContent='Next hand';
+}
+document.addEventListener('keydown',e=>{ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); act(); }});
+setMode('normal');
+</script>
+</body>
+</html>
